@@ -1,0 +1,21 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="moonGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f43f5e"/>
+      <stop offset="100%" stop-color="#7c3aed"/>
+    </linearGradient>
+    <filter id="starGlow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="1" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <!-- Stars -->
+  <circle cx="46" cy="12" r="2.5" fill="#fbbf24" filter="url(#starGlow)"/>
+  <circle cx="54" cy="28" r="1.5" fill="#fbbf24" filter="url(#starGlow)"/>
+  <circle cx="50" cy="42" r="2" fill="#fbbf24" filter="url(#starGlow)"/>
+  <!-- Crescent Moon -->
+  <path d="M28 6C14.745 6 4 16.745 4 30s10.745 24 24 24c1.2 0 2.38-.09 3.52-.27C22.24 51.76 16 42.16 16 30S22.24 8.24 31.52 6.27C30.38 6.09 29.2 6 28 6z" fill="url(#moonGradient)"/>
+</svg>
