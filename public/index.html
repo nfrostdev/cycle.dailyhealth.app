@@ -1189,9 +1189,9 @@
     const currentDay = isDebugActive() ? debugMode.cycleDay : (getCurrentCycleDay(data) || 1);
 
     return `
-        <div class="mt-8 bg-gray-100 dark:bg-dark-card/50 rounded-2xl p-5 border-2 border-dashed border-gray-300 dark:border-dark-border">
+        <div class="mt-8 bg-stone-100 dark:bg-stone-800 rounded-2xl p-5 border-2 border-dashed border-stone-300 dark:border-stone-600">
           <div class="flex items-center justify-between mb-4">
-            <h3 class="font-medium text-warm-gray dark:text-rose-100 text-sm">🧪 Debug Mode</h3>
+            <h3 class="font-medium text-stone-700 dark:text-stone-200 text-sm">🧪 Debug Mode</h3>
             <div class="flex items-center gap-3">
               <label class="flex items-center gap-2 cursor-pointer">
                 <input
@@ -1200,7 +1200,7 @@
                   ${debugMode.enabled ? 'checked' : ''}
                   class="w-4 h-4 accent-rose-500"
                 >
-                <span class="text-xs text-warm-light dark:text-rose-300/70">Enable</span>
+                <span class="text-xs text-stone-500 dark:text-stone-400">Enable</span>
               </label>
               <button id="debugResetBtn" class="text-xs text-rose-500 hover:text-rose-600 dark:text-rose-400 dark:hover:text-rose-300 font-medium">
                 Reset
@@ -1211,9 +1211,9 @@
           <div class="space-y-5 ${debugMode.enabled ? '' : 'opacity-50 pointer-events-none'}">
             <!-- Cycle Length -->
             <div>
-              <div class="flex justify-between text-xs text-warm-light dark:text-rose-300/70 mb-2">
+              <div class="flex justify-between text-xs text-stone-500 dark:text-stone-400 mb-2">
                 <span>Cycle Length</span>
-                <span class="font-medium text-warm-gray dark:text-rose-100">${avgCycle} days</span>
+                <span class="font-medium text-stone-700 dark:text-stone-200">${avgCycle} days</span>
               </div>
               <input
                 type="range"
@@ -1221,9 +1221,9 @@
                 min="21"
                 max="40"
                 value="${avgCycle}"
-                class="w-full h-2 bg-gray-200 dark:bg-dark-border rounded-lg appearance-none cursor-pointer accent-rose-500"
+                class="w-full h-2 bg-stone-200 dark:bg-stone-700 rounded-lg appearance-none cursor-pointer accent-rose-500"
               >
-              <div class="flex justify-between text-xs text-warm-light dark:text-rose-300/70 mt-1">
+              <div class="flex justify-between text-xs text-stone-500 dark:text-stone-400 mt-1">
                 <span>21</span>
                 <span>40</span>
               </div>
@@ -1231,9 +1231,9 @@
 
             <!-- Period Length -->
             <div>
-              <div class="flex justify-between text-xs text-warm-light dark:text-rose-300/70 mb-2">
+              <div class="flex justify-between text-xs text-stone-500 dark:text-stone-400 mb-2">
                 <span>Period Length</span>
-                <span class="font-medium text-warm-gray dark:text-rose-100">${avgPeriod} days</span>
+                <span class="font-medium text-stone-700 dark:text-stone-200">${avgPeriod} days</span>
               </div>
               <input
                 type="range"
@@ -1241,9 +1241,9 @@
                 min="2"
                 max="10"
                 value="${avgPeriod}"
-                class="w-full h-2 bg-gray-200 dark:bg-dark-border rounded-lg appearance-none cursor-pointer accent-rose-500"
+                class="w-full h-2 bg-stone-200 dark:bg-stone-700 rounded-lg appearance-none cursor-pointer accent-rose-500"
               >
-              <div class="flex justify-between text-xs text-warm-light dark:text-rose-300/70 mt-1">
+              <div class="flex justify-between text-xs text-stone-500 dark:text-stone-400 mt-1">
                 <span>2</span>
                 <span>10</span>
               </div>
@@ -1251,21 +1251,21 @@
 
             <!-- Current Day -->
             <div>
-              <div class="flex justify-between text-xs text-warm-light dark:text-rose-300/70 mb-2">
+              <div class="flex justify-between text-xs text-stone-500 dark:text-stone-400 mb-2">
                 <span>Current Cycle Day</span>
-                <span class="font-medium text-warm-gray dark:text-rose-100">Day ${currentDay}</span>
+                <span class="font-medium text-stone-700 dark:text-stone-200">Day ${currentDay}</span>
               </div>
               <input
                 type="range"
                 id="debugDaySlider"
                 min="1"
-                max="${avgCycle}"
+                max="${avgCycle + 10}"
                 value="${currentDay}"
-                class="w-full h-2 bg-gray-200 dark:bg-dark-border rounded-lg appearance-none cursor-pointer accent-rose-500"
+                class="w-full h-2 bg-stone-200 dark:bg-stone-700 rounded-lg appearance-none cursor-pointer accent-rose-500"
               >
-              <div class="flex justify-between text-xs text-warm-light dark:text-rose-300/70 mt-1">
+              <div class="flex justify-between text-xs text-stone-500 dark:text-stone-400 mt-1">
                 <span>Day 1</span>
-                <span>Day ${avgCycle}</span>
+                <span>Day ${avgCycle + 10}</span>
               </div>
             </div>
           </div>
@@ -1327,10 +1327,10 @@
     // Not on period
     const daysText = daysUntil !== null
             ? (daysUntil > 0
-                    ? `${daysUntil} day${daysUntil !== 1 ? 's' : ''} until next period`
+                    ? `Next period may arrive in ${daysUntil} day${daysUntil !== 1 ? 's' : ''}`
                     : daysUntil === 0
-                            ? 'Period expected today'
-                            : `Period is ${Math.abs(daysUntil)} day${Math.abs(daysUntil) !== 1 ? 's' : ''} late`)
+                            ? 'Period may arrive today'
+                            : `Your period may arrive soon<br>(${Math.abs(daysUntil)} day${Math.abs(daysUntil) !== 1 ? 's' : ''} past expected)`)
             : '';
 
     const phase = getCurrentPhase(appData);
@@ -1370,26 +1370,53 @@
     const boundaries = getPhaseBoundaries(data);
     const progress = Math.min((cycleDay - 1) / avgCycle, 1);
 
+    // Define colors for gradient (using hex values for CSS gradient)
     const phaseColors = {
-      'menstrual': 'bg-rose-400 dark:bg-rose-500',
-      'follicular': 'bg-amber-400 dark:bg-amber-500',
-      'ovulation': 'bg-emerald-400 dark:bg-emerald-500',
-      'luteal-early': 'bg-sky-400 dark:bg-sky-500',
-      'luteal-late': 'bg-violet-400 dark:bg-violet-500'
+      'menstrual': '#fb7185',     // rose-400
+      'follicular': '#fbbf24',    // amber-400
+      'ovulation': '#34d399',     // emerald-400
+      'luteal-early': '#38bdf8',  // sky-400
+      'luteal-late': '#a78bfa'    // violet-400
     };
 
-    const segments = boundaries.map(phase => {
-      const width = (phase.end - phase.start) * 100;
-      return `<div class="${phaseColors[phase.id]} h-full" style="width: ${width}%"></div>`;
-    }).join('');
+    // Build gradient stops with smooth transitions
+    // Each phase blends into the next over ~5% of the timeline
+    const blendSize = 0.08; // 8% blend zone
+    const gradientStops = [];
+    
+    boundaries.forEach((phase, index) => {
+      const color = phaseColors[phase.id];
+      const startPercent = phase.start * 100;
+      const endPercent = phase.end * 100;
+      
+      if (index === 0) {
+        // First phase: solid at start
+        gradientStops.push(`${color} ${startPercent}%`);
+      }
+      
+      // Solid color in the middle of the phase
+      const solidStart = startPercent + (index > 0 ? blendSize * 100 : 0);
+      const solidEnd = endPercent - (index < boundaries.length - 1 ? blendSize * 100 : 0);
+      
+      if (index > 0) {
+        gradientStops.push(`${color} ${solidStart}%`);
+      }
+      
+      if (index < boundaries.length - 1) {
+        gradientStops.push(`${color} ${solidEnd}%`);
+      } else {
+        // Last phase: solid at end
+        gradientStops.push(`${color} ${endPercent}%`);
+      }
+    });
+
+    const gradient = `linear-gradient(to right, ${gradientStops.join(', ')})`;
 
     return `
         <div class="mt-5">
           <div class="relative">
-            <div class="h-2 rounded-full overflow-hidden flex">
-              ${segments}
-            </div>
-            <div class="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-4 h-4 rounded-full shadow-md border-2 border-white" style="left: ${progress * 100}%; background-color: var(--phase-marker);"></div>
+            <div class="h-2 rounded-full overflow-hidden" style="background: ${gradient};"></div>
+            <div class="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-4 h-4 rounded-full shadow-md border-2 border-white dark:border-stone-800" style="left: ${progress * 100}%; background-color: var(--phase-marker);"></div>
           </div>
           <div class="flex justify-between mt-2 text-xs text-stone-500 dark:text-stone-400">
             <span>Day 1</span>
@@ -1646,10 +1673,6 @@
       }
       if (e.target.id === 'debugCycleLengthSlider') {
         debugMode.cycleLength = parseInt(e.target.value, 10);
-        // Ensure cycle day doesn't exceed new cycle length
-        if (debugMode.cycleDay > debugMode.cycleLength) {
-          debugMode.cycleDay = debugMode.cycleLength;
-        }
         debouncedRender();
       }
       if (e.target.id === 'debugPeriodLengthSlider') {
