@@ -61,9 +61,10 @@ esbuild.buildSync({
 const jsHash = contentHash(path.join(DIST, 'app.js'));
 const jsFilename = `app-${jsHash}.js`;
 
-// Inject the real hash in place of the __VERSION__ placeholder
+// Inject the semver from package.json in place of the __VERSION__ placeholder
+const { version } = require('./package.json');
 let jsContent = fs.readFileSync(path.join(DIST, 'app.js'), 'utf8');
-jsContent = jsContent.replace(/'__VERSION__'|"__VERSION__"/, `"${jsHash}"`);
+jsContent = jsContent.replace(/'__VERSION__'|"__VERSION__"/, `"${version}"`);
 fs.writeFileSync(path.join(DIST, 'app.js'), jsContent);
 
 fs.renameSync(path.join(DIST, 'app.js'), path.join(DIST, jsFilename));
@@ -156,6 +157,6 @@ copyDir(path.join(SRC, 'icons'), path.join(DIST, 'icons'));
 // ----------------------------------------
 const cssSize = (fs.statSync(path.join(DIST, cssFilename)).size / 1024).toFixed(1);
 const jsSize  = (fs.statSync(path.join(DIST, jsFilename)).size  / 1024).toFixed(1);
-console.log(`\nBuild complete → dist/`);
+console.log(`\nBuild complete → dist/  (v${version}, build ${jsHash})`);
 console.log(`  ${cssFilename}  ${cssSize} kB`);
 console.log(`  ${jsFilename}   ${jsSize} kB`);
