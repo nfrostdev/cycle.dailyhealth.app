@@ -1,2 +1,4 @@
 .idea
 .firebase
+node_modules
+dist
