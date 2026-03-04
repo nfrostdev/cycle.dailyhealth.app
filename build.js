@@ -64,7 +64,7 @@ const jsFilename = `app-${jsHash}.js`;
 // Inject the semver from package.json in place of the __VERSION__ placeholder
 const { version } = require('./package.json');
 let jsContent = fs.readFileSync(path.join(DIST, 'app.js'), 'utf8');
-jsContent = jsContent.replace(/'__VERSION__'|"__VERSION__"/, `"${version}"`);
+jsContent = jsContent.replace('__VERSION__', version);
 fs.writeFileSync(path.join(DIST, 'app.js'), jsContent);
 
 fs.renameSync(path.join(DIST, 'app.js'), path.join(DIST, jsFilename));
