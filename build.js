@@ -1,4 +1,5 @@
 const { execSync } = require('child_process');
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const esbuild = require('esbuild');
@@ -24,6 +25,11 @@ function copyDir(src, dest) {
   }
 }
 
+function contentHash(filePath) {
+  const buf = fs.readFileSync(filePath);
+  return crypto.createHash('sha256').update(buf).digest('hex').slice(0, 8);
+}
+
 // ----------------------------------------
 // 1. Clean dist/
 // ----------------------------------------
@@ -32,15 +38,18 @@ fs.rmSync(DIST, { recursive: true, force: true });
 fs.mkdirSync(DIST);
 
 // ----------------------------------------
-// 2. CSS — Tailwind CLI
+// 2. CSS — Tailwind CLI (unhashed first, rename after)
 // ----------------------------------------
 console.log('Building CSS...');
 execSync('npx tailwindcss -i ./styles/input.css -o ./dist/styles.css --minify', {
   stdio: 'inherit',
 });
+const cssHash = contentHash(path.join(DIST, 'styles.css'));
+const cssFilename = `styles-${cssHash}.css`;
+fs.renameSync(path.join(DIST, 'styles.css'), path.join(DIST, cssFilename));
 
 // ----------------------------------------
-// 3. JS — minify with esbuild
+// 3. JS — minify with esbuild (unhashed first, rename after)
 // ----------------------------------------
 console.log('Minifying JS...');
 esbuild.buildSync({
@@ -49,6 +58,9 @@ esbuild.buildSync({
   minify: true,
   target: 'es2017',
 });
+const jsHash = contentHash(path.join(DIST, 'app.js'));
+const jsFilename = `app-${jsHash}.js`;
+fs.renameSync(path.join(DIST, 'app.js'), path.join(DIST, jsFilename));
 
 // ----------------------------------------
 // 4. Fonts — copy from fontsource packages
@@ -84,7 +96,7 @@ copyFonts(
 );
 
 // ----------------------------------------
-// 5. HTML — strip CDN scripts, inject stylesheet
+// 5. HTML — strip CDN scripts, inject hashed stylesheet + script
 // ----------------------------------------
 console.log('Processing index.html...');
 let html = fs.readFileSync(path.join(SRC, 'index.html'), 'utf8');
@@ -95,23 +107,29 @@ html = html.replace(/\n\s*<!-- Preconnect & Fonts -->\n[\s\S]*?rel="stylesheet">
 // Remove Tailwind CDN script + inline config block (two consecutive <script> tags)
 html = html.replace(/\n\s*<!-- Tailwind -->[\s\S]*?<\/script>[\s\S]*?<\/script>\n/, '\n');
 
-// Inject built stylesheet before </head>
-html = html.replace('</head>', '  <link rel="stylesheet" href="styles.css">\n</head>');
+// Inject hashed stylesheet before </head>
+html = html.replace('</head>', `  <link rel="stylesheet" href="${cssFilename}">\n</head>`);
+
+// Update app.js script src to hashed filename
+html = html.replace('src="app.js"', `src="${jsFilename}"`);
 
 fs.writeFileSync(path.join(DIST, 'index.html'), html);
 
 // ----------------------------------------
-// 6. Service worker — add styles.css + fonts to cache list
+// 6. Service worker — inject hashed filenames + cache name
 // ----------------------------------------
 console.log('Processing sw.js...');
 let sw = fs.readFileSync(path.join(SRC, 'sw.js'), 'utf8');
 
-// Find which font files were copied and add to cache list
-const fontFiles = fs.existsSync(FONTS_DIST)
-  ? fs.readdirSync(FONTS_DIST).map((f) => `/fonts/${f}`)
-  : [];
+// Use JS hash in cache name so each deploy gets a fresh cache
+sw = sw.replace(/const CACHE_NAME = '[^']+';/, `const CACHE_NAME = 'cycle-${jsHash}';`);
 
-const extraAssets = ['/styles.css', ...fontFiles];
+// Replace bare asset filenames with hashed versions
+sw = sw.replace("'/app.js'", `'/${jsFilename}'`);
+
+// Inject styles.css (hashed) + fonts into STATIC_ASSETS
+const fontFiles = fs.readdirSync(FONTS_DIST).map((f) => `/fonts/${f}`);
+const extraAssets = [`/${cssFilename}`, ...fontFiles];
 sw = sw.replace(
   "const STATIC_ASSETS = [",
   `const STATIC_ASSETS = [\n  ${extraAssets.map((a) => `'${a}'`).join(',\n  ')},`
@@ -130,8 +148,8 @@ copyDir(path.join(SRC, 'icons'), path.join(DIST, 'icons'));
 // ----------------------------------------
 // Done
 // ----------------------------------------
-const cssSize = (fs.statSync(path.join(DIST, 'styles.css')).size / 1024).toFixed(1);
-const jsSize  = (fs.statSync(path.join(DIST, 'app.js')).size  / 1024).toFixed(1);
+const cssSize = (fs.statSync(path.join(DIST, cssFilename)).size / 1024).toFixed(1);
+const jsSize  = (fs.statSync(path.join(DIST, jsFilename)).size  / 1024).toFixed(1);
 console.log(`\nBuild complete → dist/`);
-console.log(`  styles.css  ${cssSize} kB`);
-console.log(`  app.js      ${jsSize} kB`);
+console.log(`  ${cssFilename}  ${cssSize} kB`);
+console.log(`  ${jsFilename}   ${jsSize} kB`);

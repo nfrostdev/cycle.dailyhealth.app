@@ -15,7 +15,9 @@ self.addEventListener('install', (e) => {
   );
 });
 
-// Activate — remove old caches
+// Activate — remove old caches, then reload all open clients so they
+// immediately get the new HTML + hashed assets rather than waiting for
+// the next manual refresh.
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys()
@@ -23,6 +25,8 @@ self.addEventListener('activate', (e) => {
         names.filter((n) => n !== CACHE_NAME).map((n) => caches.delete(n))
       ))
       .then(() => self.clients.claim())
+      .then(() => self.clients.matchAll({ type: 'window' }))
+      .then((clients) => clients.forEach((client) => client.navigate(client.url)))
   );
 });
 
