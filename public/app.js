@@ -884,6 +884,66 @@
   }
 
   // ==========================================
+  // DATA MANAGEMENT
+  // ==========================================
+
+  /**
+   * Export app data as a downloadable JSON file
+   */
+  function exportData(data) {
+    const payload = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      data: data
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `cycle-backup-${getTodayString()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  /**
+   * Parse and validate an imported JSON string
+   * @returns {{ ok: true, data: Object } | { ok: false, error: string }}
+   */
+  function parseImportFile(jsonString) {
+    let parsed;
+    try {
+      parsed = JSON.parse(jsonString);
+    } catch {
+      return { ok: false, error: 'File is not valid JSON.' };
+    }
+
+    // Support both wrapped format (version 1) and bare data object
+    const data = parsed.version === 1 ? parsed.data : parsed;
+
+    if (!data || !Array.isArray(data.periods)) {
+      return { ok: false, error: 'File does not appear to be a Cycle backup.' };
+    }
+
+    // Validate period entries
+    for (const p of data.periods) {
+      if (typeof p.id !== 'string' || typeof p.startDate !== 'string') {
+        return { ok: false, error: 'Backup contains invalid period entries.' };
+      }
+    }
+
+    // Ensure settings object exists
+    const merged = { ...defaultData, ...data };
+    return { ok: true, data: merged };
+  }
+
+  /**
+   * Clear all app data and reset to defaults
+   */
+  function clearAllData() {
+    updateData({ ...defaultData });
+  }
+
+  // ==========================================
   // APP STATE
   // ==========================================
   let appData = loadData();
@@ -967,6 +1027,9 @@
 
         <!-- Period History -->
         ${renderHistory(appData)}
+
+        <!-- Data Management -->
+        ${renderDataManagement(appData)}
 
         <!-- Debug Panel -->
         ${debugPanelVisible ? renderDebugPanel(appData) : ''}
@@ -1232,6 +1295,12 @@
           >
             End Period
           </button>
+          <button
+            id="logPastPeriodBtn"
+            class="w-full mt-3 py-2 text-sm font-medium transition-colors hover:opacity-70 phase-text-accent"
+          >
+            + Log past period
+          </button>
         `;
     }
 
@@ -1322,6 +1391,29 @@
         <div class="${UI.card}">
           <h3 class="${UI.text.heading} mb-4">Recent Periods</h3>
           ${historyItems}
+        </div>
+      `;
+  }
+
+  /**
+   * Render data management section
+   */
+  function renderDataManagement(data) {
+    const hasData = data.periods.length > 0;
+    return `
+        <div class="mt-4 mb-8">
+          <h3 class="${UI.text.small} uppercase tracking-wide mb-3 text-center">Manage Data</h3>
+          <div class="flex gap-3">
+            <button id="exportDataBtn" ${!hasData ? 'disabled' : ''} class="flex-1 ${UI.btn.secondary} text-sm disabled:opacity-40 disabled:cursor-not-allowed">
+              Export
+            </button>
+            <button id="importDataBtn" class="flex-1 ${UI.btn.secondary} text-sm">
+              Import
+            </button>
+            <button id="clearDataBtn" ${!hasData ? 'disabled' : ''} class="flex-1 py-3 px-4 rounded-xl text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed text-red-500 dark:text-red-400 bg-stone-100 dark:bg-stone-700 hover:bg-red-50 dark:hover:bg-stone-600">
+              Clear
+            </button>
+          </div>
         </div>
       `;
   }
@@ -1496,6 +1588,71 @@
         return;
       }
 
+      // Handle export button
+      if (e.target.closest('#exportDataBtn')) {
+        exportData(appData);
+        return;
+      }
+
+      // Handle import button — trigger hidden file input
+      if (e.target.closest('#importDataBtn')) {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json,application/json';
+        input.addEventListener('change', function() {
+          const file = this.files[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = function(ev) {
+            const result = parseImportFile(ev.target.result);
+            if (!result.ok) {
+              alert(result.error);
+              return;
+            }
+            showImportConfirmModal(result.data);
+          };
+          reader.readAsText(file);
+        });
+        input.click();
+        return;
+      }
+
+      // Handle import confirmation
+      if (e.target.closest('#confirmImportBtn')) {
+        const modal = document.getElementById('importConfirmModal');
+        if (modal) {
+          const parsed = JSON.parse(modal.dataset.importJson);
+          updateData(parsed);
+          removeModal('importConfirmModal');
+        }
+        return;
+      }
+
+      // Handle cancel import
+      if (e.target.closest('#cancelImportBtn') || e.target.id === 'importConfirmModalOverlay') {
+        removeModal('importConfirmModal');
+        return;
+      }
+
+      // Handle clear data button
+      if (e.target.closest('#clearDataBtn')) {
+        showClearDataConfirmation();
+        return;
+      }
+
+      // Handle confirm clear data
+      if (e.target.closest('#confirmClearDataBtn')) {
+        clearAllData();
+        removeModal('clearDataModal');
+        return;
+      }
+
+      // Handle cancel clear data
+      if (e.target.closest('#cancelClearDataBtn') || e.target.id === 'clearDataModalOverlay') {
+        removeModal('clearDataModal');
+        return;
+      }
+
       // Handle debug reset button
       if (e.target.closest('#debugResetBtn')) {
         debugMode = {
@@ -1651,6 +1808,42 @@
    */
   function hideAddPastPeriodModal() {
     removeModal('addPastPeriodModal');
+  }
+
+  /**
+   * Show import confirmation modal after a file has been parsed
+   */
+  function showImportConfirmModal(parsedData) {
+    const periodCount = parsedData.periods.length;
+    const hasExisting = appData.periods.length > 0;
+    const content = `
+        <h3 class="${UI.text.heading} mb-2">Import Data</h3>
+        <p class="${UI.text.body} mb-1">Found <strong>${periodCount} period${periodCount !== 1 ? 's' : ''}</strong> in this backup.</p>
+        ${hasExisting ? `<p class="text-sm text-red-500 dark:text-red-400 mb-6">This will replace all your current data.</p>` : `<p class="${UI.text.body} mb-6"></p>`}
+        <div class="flex gap-3">
+          <button id="cancelImportBtn" class="flex-1 ${UI.btn.secondary}">Cancel</button>
+          <button id="confirmImportBtn" class="flex-1 ${UI.btn.primary}" style="background-color: var(--phase-gradient-from);">Import</button>
+        </div>
+      `;
+    const modal = createModal('importConfirmModal', content);
+    modal.dataset.importJson = JSON.stringify(parsedData);
+    document.body.appendChild(modal);
+  }
+
+  /**
+   * Show clear data confirmation modal
+   */
+  function showClearDataConfirmation() {
+    const count = appData.periods.length;
+    const content = `
+        <h3 class="${UI.text.heading} mb-2">Clear All Data?</h3>
+        <p class="${UI.text.body} mb-6">This will permanently delete ${count} period${count !== 1 ? 's' : ''} and cannot be undone.</p>
+        <div class="flex gap-3">
+          <button id="cancelClearDataBtn" class="flex-1 ${UI.btn.secondary}">Cancel</button>
+          <button id="confirmClearDataBtn" class="flex-1 ${UI.btn.danger}">Clear</button>
+        </div>
+      `;
+    document.body.appendChild(createModal('clearDataModal', content));
   }
 
   /**
