@@ -60,6 +60,12 @@ esbuild.buildSync({
 });
 const jsHash = contentHash(path.join(DIST, 'app.js'));
 const jsFilename = `app-${jsHash}.js`;
+
+// Inject the real hash in place of the __VERSION__ placeholder
+let jsContent = fs.readFileSync(path.join(DIST, 'app.js'), 'utf8');
+jsContent = jsContent.replace(/'__VERSION__'|"__VERSION__"/, `"${jsHash}"`);
+fs.writeFileSync(path.join(DIST, 'app.js'), jsContent);
+
 fs.renameSync(path.join(DIST, 'app.js'), path.join(DIST, jsFilename));
 
 // ----------------------------------------

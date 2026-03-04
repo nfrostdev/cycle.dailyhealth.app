@@ -3,6 +3,7 @@
   // ==========================================
   const STORAGE_KEY = 'periodTrackerData';
   const MIN_PERIODS_FOR_AVERAGE = 3;
+  const APP_VERSION = '__VERSION__';
 
   // ==========================================
   // DEFAULT DATA
@@ -1414,6 +1415,7 @@
               Clear
             </button>
           </div>
+          <p class="text-center text-xs text-stone-400 dark:text-stone-600 mt-3">v${APP_VERSION}</p>
         </div>
       `;
   }
