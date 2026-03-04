@@ -1886,7 +1886,18 @@
   // SERVICE WORKER
   // ==========================================
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js')
+    // Unregister any legacy service workers (e.g. old blob URL registrations)
+    // before registering the new one. localStorage is never affected.
+    navigator.serviceWorker.getRegistrations()
+      .then((registrations) => Promise.all(
+        registrations
+          .filter((reg) => {
+            const url = (reg.active || reg.installing || reg.waiting)?.scriptURL || '';
+            return !url.endsWith('/sw.js');
+          })
+          .map((reg) => reg.unregister())
+      ))
+      .then(() => navigator.serviceWorker.register('/sw.js'))
       .then(() => console.log('Cycle: Offline ready'))
       .catch((err) => console.warn('Cycle: SW registration failed', err));
   }
