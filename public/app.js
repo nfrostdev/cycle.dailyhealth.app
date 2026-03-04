@@ -1883,59 +1883,10 @@
   });
 
   // ==========================================
-  // SERVICE WORKER (INLINE)
+  // SERVICE WORKER
   // ==========================================
-  const SW_CODE = `
-      const CACHE_NAME = 'cycle-v1';
-
-      // Install - cache the app shell
-      self.addEventListener('install', (e) => {
-        e.waitUntil(
-          caches.open(CACHE_NAME).then((cache) => {
-            return cache.addAll(['/']);
-          }).then(() => self.skipWaiting())
-        );
-      });
-
-      // Activate - clean old caches
-      self.addEventListener('activate', (e) => {
-        e.waitUntil(
-          caches.keys().then((names) => {
-            return Promise.all(
-              names.filter((name) => name !== CACHE_NAME).map((name) => caches.delete(name))
-            );
-          }).then(() => self.clients.claim())
-        );
-      });
-
-      // Fetch - cache first, then network
-      self.addEventListener('fetch', (e) => {
-        if (e.request.method !== 'GET') return;
-
-        e.respondWith(
-          caches.match(e.request).then((cached) => {
-            const fetchPromise = fetch(e.request).then((response) => {
-              if (response.ok) {
-                const clone = response.clone();
-                caches.open(CACHE_NAME).then((cache) => cache.put(e.request, clone));
-              }
-              return response;
-            }).catch(() => cached);
-
-            return cached || fetchPromise;
-          })
-        );
-      });
-    `;
-
   if ('serviceWorker' in navigator) {
-    const blob = new Blob([SW_CODE], { type: 'application/javascript' });
-    const swUrl = URL.createObjectURL(blob);
-
-    navigator.serviceWorker.register(swUrl, { scope: '/' })
-            .then(() => console.log('Cycle: Offline ready'))
-            .catch(() => {
-              // Blob URL registration failed, try traditional method as fallback
-              // This is expected in some browsers - app still works, just without offline
-            });
+    navigator.serviceWorker.register('/sw.js')
+      .then(() => console.log('Cycle: Offline ready'))
+      .catch((err) => console.warn('Cycle: SW registration failed', err));
   }
