@@ -69,6 +69,26 @@ describe('ending a period', () => {
   });
 });
 
+describe('deleting a period', () => {
+  test('confirming removes exactly one row', () => {
+    const app = bootApp(regularHistory());
+    const before = app.doc.querySelectorAll('.delete-period-btn').length;
+    app.doc.querySelectorAll('.delete-period-btn')[0].click();
+    assert.ok(app.doc.getElementById('deleteModal'), 'should confirm first');
+    assert.ok(app.click('#confirmDeleteBtn'));
+    assert.equal(app.doc.getElementById('deleteModal'), null, 'modal should close');
+    assert.equal(app.doc.querySelectorAll('.delete-period-btn').length, before - 1);
+  });
+
+  test('cancelling keeps the period', () => {
+    const app = bootApp(regularHistory());
+    const before = app.doc.querySelectorAll('.delete-period-btn').length;
+    app.doc.querySelectorAll('.delete-period-btn')[0].click();
+    assert.ok(app.click('#cancelDeleteBtn'));
+    assert.equal(app.doc.querySelectorAll('.delete-period-btn').length, before);
+  });
+});
+
 describe('door 1 — period did not arrive', () => {
   const OVERDUE = regularHistory(-7);      // predicted date fell 7 days ago
   const NOT_DUE = regularHistory(18);      // predicted date is 18 days out

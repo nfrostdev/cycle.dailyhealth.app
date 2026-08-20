@@ -210,15 +210,26 @@
   };
 
   /**
+   * Drop every cached value when the data changes.
+   *
+   * Clearing only the field being read would leave the others keyed to data
+   * they were not computed from, so the next reader gets a stale answer for
+   * the new dataset.
+   */
+  function ensureCacheFresh(data) {
+    if (!calculationCache.isValid(data)) {
+      calculationCache.invalidate();
+      calculationCache.update(data);
+    }
+  }
+
+  /**
    * Get cached or calculate average cycle length
    */
   function getCachedAverageCycleLength(data) {
     if (isDebugActive()) return debugMode.cycleLength;
 
-    if (!calculationCache.isValid(data)) {
-      calculationCache.update(data);
-      calculationCache.avgCycle = null;
-    }
+    ensureCacheFresh(data);
 
     if (calculationCache.avgCycle === null) {
       calculationCache.avgCycle = calculateAverageCycleLength(data);
@@ -232,10 +243,7 @@
   function getCachedAveragePeriodLength(data) {
     if (isDebugActive()) return debugMode.periodLength;
 
-    if (!calculationCache.isValid(data)) {
-      calculationCache.update(data);
-      calculationCache.avgPeriod = null;
-    }
+    ensureCacheFresh(data);
 
     if (calculationCache.avgPeriod === null) {
       calculationCache.avgPeriod = calculateAveragePeriodLength(data);
@@ -412,16 +420,6 @@
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   }
 
-  /**
-   * Format a date with year
-   * @param {string} dateStr - ISO date string
-   * @returns {string} Formatted date (e.g., "January 15, 2026")
-   */
-  function formatDateLong(dateStr) {
-    const date = parseDate(dateStr);
-    return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-  }
-
   // ==========================================
   // PERIOD MANAGEMENT
   // ==========================================
@@ -516,16 +514,6 @@
       intervals.push(getCycleLength(sorted[i - 1], sorted[i]));
     }
     return intervals;
-  }
-
-  /**
-   * Get the most recent completed period
-   * @param {Object} data - App data
-   * @returns {Object|null} Last completed period or null
-   */
-  function getLastCompletedPeriod(data) {
-    const completed = getCompletedPeriods(data);
-    return completed.length > 0 ? completed[0] : null;
   }
 
   /**
@@ -1898,13 +1886,6 @@
   }
 
   /**
-   * Show edit period start date modal
-   */
-  function showEditPeriodStartModal(periodId, currentStartDate) {
-    showEditPeriodModal(periodId, currentStartDate, null);
-  }
-
-  /**
    * Show edit period modal (for both start and end dates)
    */
   function showEditPeriodModal(periodId, startDate, endDate, skipped) {
@@ -2077,23 +2058,6 @@
   document.addEventListener('DOMContentLoaded', () => {
     attachEventListeners();
     render();
-  });
-
-  // Listen for clicks on the document for modal interactions
-  document.addEventListener('click', function(e) {
-    // Handle confirm delete
-    if (e.target.closest('#confirmDeleteBtn')) {
-      const periodId = e.target.closest('#confirmDeleteBtn').dataset.periodId;
-      if (periodId) {
-        updateData(deletePeriod(appData, periodId));
-        hideDeleteConfirmation();
-      }
-    }
-
-    // Handle cancel delete or overlay click
-    if (e.target.closest('#cancelDeleteBtn') || e.target.id === 'deleteModalOverlay') {
-      hideDeleteConfirmation();
-    }
   });
 
   // ==========================================

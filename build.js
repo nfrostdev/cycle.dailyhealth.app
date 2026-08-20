@@ -77,31 +77,34 @@ console.log('Copying fonts...');
 const FONTS_DIST = path.join(DIST, 'fonts');
 fs.mkdirSync(FONTS_DIST, { recursive: true });
 
-function copyFonts(packageName, filter) {
-  const filesDir = path.join(__dirname, 'node_modules', packageName, 'files');
-  if (!fs.existsSync(filesDir)) {
-    console.warn(`  Warning: ${packageName} not found. Run npm install.`);
-    return;
-  }
-  const files = fs.readdirSync(filesDir).filter(filter);
-  if (files.length === 0) {
-    console.warn(`  Warning: no matching font files found in ${packageName}/files/`);
-    return;
-  }
-  for (const file of files) {
-    fs.copyFileSync(path.join(filesDir, file), path.join(FONTS_DIST, file));
-    console.log(`  Copied ${file}`);
-  }
+// Copy exactly the fonts styles/input.css declares - no more, no less.
+// A broad filename filter previously matched the latin-ext and italic cuts
+// too, which no @font-face references but the service worker still pre-cached.
+const FONT_PACKAGES = ['@fontsource-variable/outfit', '@fontsource-variable/fraunces'];
+const inputCss = fs.readFileSync(path.join(__dirname, 'styles', 'input.css'), 'utf8');
+const wantedFonts = [...new Set(
+  [...inputCss.matchAll(/url\(['"]?\/fonts\/([^'")]+)['"]?\)/g)].map((m) => m[1])
+)];
+
+if (wantedFonts.length === 0) {
+  console.error('Build failed: styles/input.css declares no @font-face sources.');
+  process.exit(1);
 }
 
-copyFonts(
-  '@fontsource-variable/outfit',
-  (f) => f.includes('latin') && f.includes('wght') && f.endsWith('.woff2')
-);
-copyFonts(
-  '@fontsource-variable/fraunces',
-  (f) => f.includes('latin') && f.includes('wght') && f.endsWith('.woff2')
-);
+for (const name of wantedFonts) {
+  const source = FONT_PACKAGES
+    .map((pkg) => path.join(__dirname, 'node_modules', pkg, 'files', name))
+    .find((candidate) => fs.existsSync(candidate));
+
+  // Previously a warning, which shipped a build with missing fonts
+  if (!source) {
+    console.error(`Build failed: ${name} is declared in input.css but absent from every font package.`);
+    process.exit(1);
+  }
+
+  fs.copyFileSync(source, path.join(FONTS_DIST, name));
+  console.log(`  Copied ${name}`);
+}
 
 // ----------------------------------------
 // 5. HTML — strip CDN scripts, inject hashed stylesheet + script
@@ -152,6 +155,37 @@ console.log('Copying static files...');
 copy(path.join(SRC, 'manifest.json'), path.join(DIST, 'manifest.json'));
 copy(path.join(SRC, 'favicon.svg'), path.join(DIST, 'favicon.svg'));
 copyDir(path.join(SRC, 'icons'), path.join(DIST, 'icons'));
+
+// ----------------------------------------
+// 8. Verify nothing third-party is loaded
+// ----------------------------------------
+// The CDN strip in step 5 is regex-driven. If index.html is edited so a
+// pattern stops matching, the build would silently ship Tailwind and Google
+// Fonts requests from an app whose whole premise is that nothing leaves the
+// device. Fail loudly instead.
+console.log('Verifying no external assets...');
+const builtHtml = fs.readFileSync(path.join(DIST, 'index.html'), 'utf8');
+const builtCss = fs.readFileSync(path.join(DIST, cssFilename), 'utf8');
+const offenders = [];
+
+for (const tag of builtHtml.match(/<script\b[^>]*>/gi) || []) {
+  if (/\bsrc\s*=\s*["']\s*(?:https?:)?\/\//i.test(tag)) offenders.push(tag.trim());
+}
+for (const tag of builtHtml.match(/<link\b[^>]*>/gi) || []) {
+  if (!/["']\s*(?:https?:)?\/\//i.test(tag)) continue;
+  const rel = (tag.match(/\brel\s*=\s*["']([^"']+)["']/i) || [])[1] || '';
+  if (rel.toLowerCase() === 'canonical') continue; // metadata, never fetched
+  offenders.push(tag.trim());
+}
+for (const m of builtCss.match(/url\(\s*['"]?(?:https?:)?\/\/[^)]*\)/gi) || []) {
+  offenders.push(m.trim());
+}
+
+if (offenders.length) {
+  console.error('\nBuild failed: dist/ would load third-party assets:');
+  for (const o of offenders) console.error('  ' + o);
+  process.exit(1);
+}
 
 // ----------------------------------------
 // Done

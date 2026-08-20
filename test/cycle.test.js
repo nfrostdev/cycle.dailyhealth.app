@@ -91,6 +91,17 @@ describe('the two gates diverge once skips exist', () => {
   test('skips are excluded from bleed samples', () => assert.equal(A.getBleedSamples(DIVERGE).length, 3));
 });
 
+describe('calculation cache', () => {
+  const fiveDay = D([p('a', '2026-01-01', '2026-01-05'), p('b', '2026-01-29', '2026-02-02'), p('c', '2026-02-26', '2026-03-02')]);
+  const threeDay = D([p('a', '2026-01-01', '2026-01-03'), p('b', '2026-01-29', '2026-01-31'), p('c', '2026-02-26', '2026-02-28')]);
+
+  test('rotating the dataset drops every cached value, not just the one read', () => {
+    assert.equal(A.getAveragePeriodLength(fiveDay), 5);  // warm the cache
+    A.getAverageCycleLength(threeDay);                   // rotate the key
+    assert.equal(A.getAveragePeriodLength(threeDay), 3, 'stale value survived the key rotation');
+  });
+});
+
 describe('mutators', () => {
   const base = D([p('a', '2026-03-26', '2026-03-30')]);
 
