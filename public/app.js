@@ -2,7 +2,11 @@
   // CONSTANTS
   // ==========================================
   const STORAGE_KEY = 'periodTrackerData';
-  const MIN_PERIODS_FOR_AVERAGE = 3;
+  // Minimum surviving start-to-start intervals needed for a real cycle average.
+  // Equivalent to the old "3 completed periods" rule when no cycles are skipped.
+  const MIN_INTERVALS_FOR_CYCLE_AVG = 2;
+  // Minimum bleeding periods needed for a real period-length average.
+  const MIN_BLEED_SAMPLES_FOR_PERIOD_AVG = 3;
   const APP_VERSION = '__VERSION__';
 
   // ==========================================
@@ -423,6 +427,26 @@
   // ==========================================
 
   /**
+   * Check whether a record is a skipped-cycle marker rather than real bleeding
+   * @param {Object} period - Period object
+   * @returns {boolean} True if the cycle was logged as skipped
+   */
+  function isSkip(period) {
+    return period.skipped === true;
+  }
+
+  /**
+   * Check whether a record represents an actual bleeding period.
+   * Absence of the flag means bleeding, so records predating this feature
+   * read correctly with no migration.
+   * @param {Object} period - Period object
+   * @returns {boolean} True if bleeding occurred
+   */
+  function isBleeding(period) {
+    return !period.skipped;
+  }
+
+  /**
    * Check if there's currently an ongoing period
    * @param {Object} data - App data
    * @returns {boolean} True if on period
@@ -459,6 +483,39 @@
     return data.periods
             .filter(p => p.endDate !== null)
             .sort((a, b) => parseDate(b.startDate) - parseDate(a.startDate));
+  }
+
+  /**
+   * Get completed periods where bleeding actually occurred, newest first.
+   * Skipped-cycle markers carry no bleed duration, so they are excluded.
+   * @param {Object} data - App data
+   * @returns {Array} Completed bleeding periods
+   */
+  function getBleedSamples(data) {
+    return getCompletedPeriods(data).filter(isBleeding);
+  }
+
+  /**
+   * Get start-to-start intervals that are safe to average.
+   *
+   * An interval only survives if neither of its endpoints is a skipped-cycle
+   * marker. A gap spanning a skip tells us nothing about cycle length, so it
+   * is voided rather than counted whole or split into invented halves.
+   *
+   * @param {Object} data - App data
+   * @returns {Array<number>} Surviving interval lengths in days
+   */
+  function getSurvivingIntervals(data) {
+    const sorted = [...getCompletedPeriods(data)].sort((a, b) =>
+            parseDate(a.startDate) - parseDate(b.startDate)
+    );
+
+    const intervals = [];
+    for (let i = 1; i < sorted.length; i++) {
+      if (isSkip(sorted[i - 1]) || isSkip(sorted[i])) continue;
+      intervals.push(getCycleLength(sorted[i - 1], sorted[i]));
+    }
+    return intervals;
   }
 
   /**
@@ -606,6 +663,55 @@
     };
   }
 
+  /**
+   * Set or clear the skipped-cycle flag on a period.
+   * Clearing removes the key entirely rather than storing false, so absence
+   * stays the single meaning of "this was a real bleeding period".
+   * @param {Object} data - App data
+   * @param {string} periodId - ID of period to update
+   * @param {boolean} skipped - Whether the cycle passed without bleeding
+   * @returns {Object} Updated data
+   */
+  function updatePeriodSkipped(data, periodId, skipped) {
+    return {
+      ...data,
+      periods: data.periods.map(p => {
+        if (p.id !== periodId) return p;
+        if (skipped) {
+          // A skip is a single-day marker; there is no bleed duration to keep
+          return { ...p, endDate: p.endDate || p.startDate, skipped: true };
+        }
+        const { skipped: _wasSkipped, ...rest } = p;
+        return rest;
+      })
+    };
+  }
+
+  /**
+   * Log a cycle that passed without bleeding.
+   *
+   * The marker lands on the predicted start date rather than today, so a user
+   * who logs late does not drag the whole grid along with them. Calling this
+   * repeatedly chains naturally when several cycles in a row were missed.
+   *
+   * @param {Object} data - App data
+   * @returns {Object} Updated data
+   */
+  function logSkippedCycle(data) {
+    const markerDate = predictNextPeriodStart(data);
+    if (!markerDate) return data;
+
+    return {
+      ...data,
+      periods: [...data.periods, {
+        id: generateId(),
+        startDate: markerDate,
+        endDate: markerDate,
+        skipped: true
+      }]
+    };
+  }
+
   // ==========================================
   // CYCLE CALCULATIONS
   // ==========================================
@@ -636,27 +742,16 @@
    * @returns {number} Average cycle length
    */
   function calculateAverageCycleLength(data) {
-    const completed = getCompletedPeriods(data);
+    const intervals = getSurvivingIntervals(data);
 
-    // Need at least MIN_PERIODS_FOR_AVERAGE to calculate real average
-    if (completed.length < MIN_PERIODS_FOR_AVERAGE) {
+    // Skips void the intervals around them, so a user with several skipped
+    // cycles can drop below the threshold and fall back to the default.
+    if (intervals.length < MIN_INTERVALS_FOR_CYCLE_AVG) {
       return data.settings.defaultCycleLength;
     }
 
-    // Sort by start date ascending
-    const sorted = [...completed].sort((a, b) =>
-            parseDate(a.startDate) - parseDate(b.startDate)
-    );
-
-    // Calculate cycle lengths between consecutive periods
-    const cycleLengths = [];
-    for (let i = 1; i < sorted.length; i++) {
-      cycleLengths.push(getCycleLength(sorted[i - 1], sorted[i]));
-    }
-
-    // Return average
-    const sum = cycleLengths.reduce((a, b) => a + b, 0);
-    return Math.round(sum / cycleLengths.length);
+    const sum = intervals.reduce((a, b) => a + b, 0);
+    return Math.round(sum / intervals.length);
   }
 
   /**
@@ -674,13 +769,13 @@
    * @returns {number} Average period length
    */
   function calculateAveragePeriodLength(data) {
-    const completed = getCompletedPeriods(data);
+    const samples = getBleedSamples(data);
 
-    if (completed.length < MIN_PERIODS_FOR_AVERAGE) {
+    if (samples.length < MIN_BLEED_SAMPLES_FOR_PERIOD_AVG) {
       return data.settings.defaultPeriodLength;
     }
 
-    const lengths = completed.map(getPeriodLength).filter(l => l > 0);
+    const lengths = samples.map(getPeriodLength).filter(l => l > 0);
     if (lengths.length === 0) return data.settings.defaultPeriodLength;
 
     const sum = lengths.reduce((a, b) => a + b, 0);
@@ -749,12 +844,23 @@
   }
 
   /**
-   * Check if we have enough data for predictions
+   * Check whether the cycle-length average rests on real observations.
+   * Separate from hasPeriodData because the two averages consume different
+   * inputs: skips destroy interval data but leave bleed durations intact.
    * @param {Object} data - App data
-   * @returns {boolean} True if enough data exists
+   * @returns {boolean} True if enough surviving intervals exist
    */
-  function hasEnoughDataForPredictions(data) {
-    return getCompletedPeriods(data).length >= MIN_PERIODS_FOR_AVERAGE;
+  function hasCycleData(data) {
+    return getSurvivingIntervals(data).length >= MIN_INTERVALS_FOR_CYCLE_AVG;
+  }
+
+  /**
+   * Check whether the period-length average rests on real observations
+   * @param {Object} data - App data
+   * @returns {boolean} True if enough bleeding periods exist
+   */
+  function hasPeriodData(data) {
+    return getBleedSamples(data).length >= MIN_BLEED_SAMPLES_FOR_PERIOD_AVG;
   }
 
   // ==========================================
@@ -833,10 +939,14 @@
 
     // Use the actual length of the most recent period if it has ended,
     // so a shorter-than-average period doesn't keep showing as Menstrual phase
+    // A skipped cycle has no menstrual phase - nothing bled - so day 1 falls
+    // straight through to follicular instead of claiming Period.
     const mostRecent = getMostRecentPeriod(data);
-    const periodEnd = (mostRecent && mostRecent.endDate)
-      ? getPeriodLength(mostRecent)
-      : avgPeriod;
+    const periodEnd = (mostRecent && isSkip(mostRecent))
+      ? 0
+      : (mostRecent && mostRecent.endDate)
+        ? getPeriodLength(mostRecent)
+        : avgPeriod;
 
     // Phase boundaries
     const follicularEnd = ovulationDay - 1;        // Day before ovulation
@@ -869,8 +979,10 @@
     const lutealLength = 14;
     const ovulationDay = avgCycle - lutealLength;
 
-    // Calculate boundaries as percentages
-    const periodEnd = avgPeriod / avgCycle;
+    // Same skip guard as getCurrentPhase, so the timeline band and the phase
+    // card agree rather than putting the marker in a rose band we deny exists
+    const mostRecent = getMostRecentPeriod(data);
+    const periodEnd = (mostRecent && isSkip(mostRecent)) ? 0 : avgPeriod / avgCycle;
     const follicularEnd = (ovulationDay - 1) / avgCycle;
     const ovulationEnd = (ovulationDay + 2) / avgCycle;
     const lutealEarlyEnd = (avgCycle - 5) / avgCycle;
@@ -932,8 +1044,16 @@
       }
     }
 
-    // Ensure settings object exists
-    const merged = { ...defaultData, ...data };
+    // Ensure settings object exists, and normalise the skip flag so a
+    // hand-edited file cannot smuggle in a truthy non-boolean
+    const merged = {
+      ...defaultData,
+      ...data,
+      periods: data.periods.map(p => {
+        const { skipped, ...rest } = p;
+        return skipped === true ? { ...rest, skipped: true } : rest;
+      })
+    };
     return { ok: true, data: merged };
   }
 
@@ -1181,13 +1301,27 @@
         `;
     }
 
-    // Not on period
+    // Not on period.
+    // When the cycle gate fails the number rests on a default rather than on
+    // observations, so the copy stops sounding equally sure of both.
+    const cycleIsEstimate = !hasCycleData(appData);
+    const arrival = cycleIsEstimate ? 'estimated' : 'may arrive';
     const daysText = daysUntil !== null
             ? (daysUntil > 0
-                    ? `Next period may arrive in ${daysUntil} day${daysUntil !== 1 ? 's' : ''}`
+                    ? `Next period ${arrival} in ${daysUntil} day${daysUntil !== 1 ? 's' : ''}`
                     : daysUntil === 0
-                            ? 'Period may arrive today'
+                            ? (cycleIsEstimate ? 'Period estimated for today' : 'Period may arrive today')
                             : `Your period may arrive soon<br>(${Math.abs(daysUntil)} day${Math.abs(daysUntil) !== 1 ? 's' : ''} past expected)`)
+            : '';
+
+    const estimateNote = (cycleIsEstimate && daysUntil !== null)
+            ? `<p class="${UI.text.small} mt-1">based on a typical ${getAverageCycleLength(appData)}-day cycle</p>`
+            : '';
+
+    // Door 1: only offered once the predicted date has already passed, so the
+    // marker logSkippedCycle places can never land in the future
+    const skipPrompt = (daysUntil !== null && daysUntil < 0 && !isDebugActive())
+            ? `<button id="logSkippedCycleBtn" class="mt-4 text-sm font-medium transition-colors hover:opacity-70 phase-text-accent">Period didn't arrive?</button>`
             : '';
 
     const phase = getCurrentPhase(appData);
@@ -1211,6 +1345,8 @@
           </div>
           <h2 class="${UI.text.heading} text-xl mb-1">Day ${cycleDay || '—'} of your cycle</h2>
           <p class="${UI.text.body}">${daysText}</p>
+          ${estimateNote}
+          ${skipPrompt}
           ${phaseHtml}
         </div>
       `;
@@ -1330,7 +1466,10 @@
     if (completed.length === 0) return '';
 
     const avgPeriod = getAveragePeriodLength(data);
-    const usingDefaults = !hasEnoughDataForPredictions(data);
+    // Two gates: skips can starve the cycle average while leaving the
+    // period-length average perfectly well supported
+    const cycleIsEstimate = !hasCycleData(data);
+    const periodIsEstimate = !hasPeriodData(data);
     const statLabel = 'text-stone-500 dark:text-stone-400 text-xs uppercase tracking-wide mb-1';
     const statValue = 'font-display text-2xl text-stone-700 dark:text-stone-200';
 
@@ -1339,12 +1478,12 @@
           <div class="${UI.card}">
             <p class="${statLabel}">Cycle Length</p>
             <p class="${statValue}">${avgCycle} <span class="text-base text-stone-500 dark:text-stone-400">days</span></p>
-            ${usingDefaults ? `<p class="${UI.text.small} mt-1" style="color: var(--phase-accent-light);">estimate</p>` : ''}
+            ${cycleIsEstimate ? `<p class="${UI.text.small} mt-1" style="color: var(--phase-accent-light);">estimate</p>` : ''}
           </div>
           <div class="${UI.card}">
             <p class="${statLabel}">Period Length</p>
             <p class="${statValue}">${avgPeriod} <span class="text-base text-stone-500 dark:text-stone-400">days</span></p>
-            ${usingDefaults ? `<p class="${UI.text.small} mt-1" style="color: var(--phase-accent-light);">estimate</p>` : ''}
+            ${periodIsEstimate ? `<p class="${UI.text.small} mt-1" style="color: var(--phase-accent-light);">estimate</p>` : ''}
           </div>
         </div>
       `;
@@ -1361,9 +1500,13 @@
     if (allPeriods.length === 0) return '';
 
     const historyItems = allPeriods.slice(0, 5).map(period => {
-      const duration = period.endDate
-              ? `${getPeriodLength(period)} days`
-              : 'ongoing';
+      const skipped = isSkip(period);
+      const days = getPeriodLength(period);
+      const duration = skipped
+              ? 'no bleeding'
+              : period.endDate
+                      ? `${days} day${days !== 1 ? 's' : ''}`
+                      : 'ongoing';
 
       return `
           <div class="flex items-center justify-between py-3 border-b last:border-0" style="border-color: var(--phase-card-border);">
@@ -1372,12 +1515,14 @@
               <p class="${UI.text.body}">${duration}</p>
             </div>
             <div class="flex items-center gap-2">
-              ${period.endDate ? `
+              ${skipped ? `
+                <span class="text-xs px-2 py-1 rounded-full font-medium bg-stone-200 dark:bg-stone-700 text-stone-500 dark:text-stone-400">skipped</span>
+              ` : period.endDate ? `
                 <span class="${UI.text.small}">${formatDate(period.startDate)} – ${formatDate(period.endDate)}</span>
               ` : `
                 <span class="text-xs px-2 py-1 rounded-full font-medium text-white" style="background-color: var(--phase-accent-light);">Active</span>
               `}
-              <button class="edit-period-btn ${UI.btn.icon}" data-period-id="${period.id}" data-start-date="${period.startDate}" data-end-date="${period.endDate || ''}" aria-label="Edit period">
+              <button class="edit-period-btn ${UI.btn.icon}" data-period-id="${period.id}" data-start-date="${period.startDate}" data-end-date="${period.endDate || ''}" data-skipped="${skipped ? '1' : ''}" aria-label="Edit period">
                 <span class="pointer-events-none">${ICONS.edit}</span>
               </button>
               <button class="delete-period-btn ${UI.btn.icon}" data-period-id="${period.id}" aria-label="Delete period">
@@ -1459,6 +1604,31 @@
         return;
       }
 
+      // Handle door 1 - cycle passed with no bleeding
+      if (e.target.closest('#logSkippedCycleBtn')) {
+        updateData(logSkippedCycle(appData));
+        return;
+      }
+
+      // Handle confirm end period (short-period prompt only)
+      if (e.target.closest('#confirmEndPeriodBtn')) {
+        const periodId = e.target.closest('#confirmEndPeriodBtn').dataset.periodId;
+        const skippedInput = document.getElementById('endPeriodSkippedInput');
+        let newData = endPeriod(appData);
+        if (periodId && skippedInput && skippedInput.checked) {
+          newData = updatePeriodSkipped(newData, periodId, true);
+        }
+        updateData(newData);
+        removeModal('endPeriodModal');
+        return;
+      }
+
+      // Handle cancel end period
+      if (e.target.closest('#cancelEndPeriodBtn') || e.target.id === 'endPeriodModalOverlay') {
+        removeModal('endPeriodModal');
+        return;
+      }
+
       // Handle delete period button
       const deleteBtn = e.target.closest('.delete-period-btn');
       if (deleteBtn) {
@@ -1496,7 +1666,7 @@
       if (e.target.closest('#editPeriodStartBtn')) {
         const currentPeriod = getCurrentPeriod(appData);
         if (currentPeriod) {
-          showEditPeriodModal(currentPeriod.id, currentPeriod.startDate, currentPeriod.endDate);
+          showEditPeriodModal(currentPeriod.id, currentPeriod.startDate, currentPeriod.endDate, isSkip(currentPeriod));
         }
         return;
       }
@@ -1507,7 +1677,7 @@
         const periodId = editPeriodBtn.dataset.periodId;
         const startDate = editPeriodBtn.dataset.startDate;
         const endDate = editPeriodBtn.dataset.endDate || null;
-        showEditPeriodModal(periodId, startDate, endDate);
+        showEditPeriodModal(periodId, startDate, endDate, editPeriodBtn.dataset.skipped === '1');
         return;
       }
 
@@ -1523,6 +1693,9 @@
           // Update end date (can be empty string for ongoing)
           const newEndDate = endInput.value || null;
           newData = updatePeriodEndDate(newData, periodId, newEndDate);
+
+          const skippedInput = document.getElementById('editPeriodSkippedInput');
+          newData = updatePeriodSkipped(newData, periodId, !!(skippedInput && skippedInput.checked));
 
           updateData(newData);
           hideEditPeriodModal();
@@ -1734,7 +1907,7 @@
   /**
    * Show edit period modal (for both start and end dates)
    */
-  function showEditPeriodModal(periodId, startDate, endDate) {
+  function showEditPeriodModal(periodId, startDate, endDate, skipped) {
     const today = getTodayString();
     const isOngoing = !endDate;
 
@@ -1753,6 +1926,11 @@
             <input type="date" id="editPeriodEndInput" value="${endDate || ''}" min="${startDate}" max="${today}" ${isOngoing ? 'placeholder="Still ongoing"' : ''} class="${UI.input}">
             ${isOngoing ? `<p class="${UI.text.small} mt-1">Leave empty if still ongoing</p>` : ''}
           </div>
+
+          <label class="flex items-start gap-3 cursor-pointer">
+            <input type="checkbox" id="editPeriodSkippedInput" ${skipped ? 'checked' : ''} class="mt-1 w-4 h-4 accent-rose-500">
+            <span class="${UI.text.body}">I didn't bleed<br><span class="${UI.text.small}">Keeps the dates, but leaves this cycle out of your averages.</span></span>
+          </label>
         </div>
 
         <div class="flex gap-3">
@@ -1849,14 +2027,48 @@
   }
 
   /**
+   * Show the end-period prompt. Only reached for suspiciously short periods -
+   * a normal-length period ends on a single tap with no modal at all.
+   */
+  function showEndPeriodModal(period, length, avgPeriod) {
+    const content = `
+        <h3 class="${UI.text.heading} mb-2">End Period?</h3>
+        <p class="${UI.text.body} mb-4">That's ${length} day${length !== 1 ? 's' : ''}, shorter than your usual ${avgPeriod} days.</p>
+
+        <label class="flex items-start gap-3 mb-6 cursor-pointer">
+          <input type="checkbox" id="endPeriodSkippedInput" class="mt-1 w-4 h-4 accent-rose-500">
+          <span class="${UI.text.body}">I didn't bleed<br><span class="${UI.text.small}">Keeps the dates, but leaves this cycle out of your averages.</span></span>
+        </label>
+
+        <div class="flex gap-3">
+          <button id="cancelEndPeriodBtn" class="flex-1 ${UI.btn.secondary}">Cancel</button>
+          <button id="confirmEndPeriodBtn" data-period-id="${period.id}" class="flex-1 ${UI.btn.primary}" style="background-color: var(--phase-gradient-from);">End Period</button>
+        </div>
+      `;
+    document.body.appendChild(createModal('endPeriodModal', content));
+  }
+
+  /**
    * Handle toggle period button click
    */
   function handleTogglePeriod() {
-    if (isOnPeriod(appData)) {
-      updateData(endPeriod(appData));
-    } else {
+    if (!isOnPeriod(appData)) {
       updateData(startPeriod(appData));
+      return;
     }
+
+    // Ending is one tap unless this looks like a false start - far shorter
+    // than this user's own average - in which case ask whether they bled.
+    const current = getCurrentPeriod(appData);
+    const avgPeriod = getAveragePeriodLength(appData);
+    const length = current ? daysBetween(current.startDate, getTodayString()) + 1 : 0;
+
+    if (current && length < Math.max(2, avgPeriod / 2)) {
+      showEndPeriodModal(current, length, avgPeriod);
+      return;
+    }
+
+    updateData(endPeriod(appData));
   }
 
   // ==========================================
