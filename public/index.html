@@ -79,20 +79,22 @@
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500&display=swap" rel="stylesheet">
 
   <!-- Tailwind -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          fontFamily: {
-            display: ['Fraunces', 'serif'],
-            body: ['Outfit', 'sans-serif'],
-          }
-        }
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.3"></script>
+  <style type="text/tailwindcss">
+    @custom-variant dark (&:is(.dark *));
+    @theme {
+      --font-display: Fraunces, serif;
+      --font-body: Outfit, sans-serif;
+    }
+    @layer base {
+      *, ::after, ::before, ::backdrop, ::file-selector-button {
+        border-color: var(--color-gray-200, currentcolor);
+      }
+      button:not(:disabled), [role='button']:not(:disabled) {
+        cursor: pointer;
       }
     }
-  </script>
+  </style>
   <style>
     * {
       -webkit-tap-highlight-color: transparent;

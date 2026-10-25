@@ -1,4 +1,41 @@
 /* ----------------------------------------
+   Tailwind
+   Sources match the old v3 `content` config: only the HTML shell and
+   app.js, which renders the rest of the UI as template strings.
+   ---------------------------------------- */
+
+@import 'tailwindcss' source(none);
+@source '../public/index.html';
+@source '../public/app.js';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --font-display: Fraunces, serif;
+  --font-body: Outfit, sans-serif;
+}
+
+/*
+  v3 compatibility. v4 changed the default border color to `currentcolor`
+  and dropped `cursor: pointer` on buttons; these keep the v3 look. To drop
+  the border rule, give every bordered element an explicit border color.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
+  }
+}
+
+/* ----------------------------------------
    Self-hosted variable fonts (via fontsource)
    Font files are copied to dist/fonts/ by build.js
    ---------------------------------------- */
@@ -18,11 +55,3 @@
   font-weight: 100 900;
   src: url('/fonts/fraunces-latin-wght-normal.woff2') format('woff2');
 }
-
-/* ----------------------------------------
-   Tailwind
-   ---------------------------------------- */
-
-@tailwind base;
-@tailwind components;
-@tailwind utilities;

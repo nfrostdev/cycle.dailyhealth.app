@@ -273,14 +273,14 @@
       icon: 'p-1.5 rounded-full text-stone-500 dark:text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-white/50 dark:hover:bg-stone-700 transition-all duration-150',
     },
     // Input styles
-    input: 'w-full px-4 py-3 rounded-xl border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-700 text-stone-700 dark:text-stone-200 focus:outline-none focus:border-stone-500 dark:focus:border-stone-400',
+    input: 'w-full px-4 py-3 rounded-xl border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-700 text-stone-700 dark:text-stone-200 focus:outline-hidden focus:border-stone-500 dark:focus:border-stone-400',
     // Modal styles
     modal: {
-      overlay: 'fixed inset-0 bg-black/30 dark:bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-5',
+      overlay: 'fixed inset-0 bg-black/30 dark:bg-black/50 backdrop-blur-xs z-50 flex items-center justify-center p-5',
       container: 'bg-white dark:bg-stone-800 rounded-2xl p-6 max-w-sm w-full shadow-xl',
     },
     // Card styles
-    card: 'phase-card backdrop-blur-sm rounded-2xl p-5',
+    card: 'phase-card backdrop-blur-xs rounded-2xl p-5',
   };
 
   /**
@@ -1122,7 +1122,7 @@
         </header>
 
         <!-- Main Status Card -->
-        <div class="phase-card backdrop-blur-sm rounded-3xl p-8 mb-6">
+        <div class="phase-card backdrop-blur-xs rounded-3xl p-8 mb-6">
           ${renderStatusContent(onPeriod, cycleDay, daysUntil, mostRecent)}
         </div>
 

@@ -41,7 +41,7 @@ fs.mkdirSync(DIST);
 // 2. CSS — Tailwind CLI (unhashed first, rename after)
 // ----------------------------------------
 console.log('Building CSS...');
-execSync('npx tailwindcss -i ./styles/input.css -o ./dist/styles.css --minify', {
+execSync('npx @tailwindcss/cli -i ./styles/input.css -o ./dist/styles.css --minify', {
   stdio: 'inherit',
 });
 const cssHash = contentHash(path.join(DIST, 'styles.css'));
@@ -115,8 +115,8 @@ let html = fs.readFileSync(path.join(SRC, 'index.html'), 'utf8');
 // Remove Google Fonts preconnect + stylesheet
 html = html.replace(/\n\s*<!-- Preconnect & Fonts -->\n[\s\S]*?rel="stylesheet">\n/, '\n');
 
-// Remove Tailwind CDN script + inline config block (two consecutive <script> tags)
-html = html.replace(/\n\s*<!-- Tailwind -->[\s\S]*?<\/script>[\s\S]*?<\/script>\n/, '\n');
+// Remove Tailwind CDN script + its inline <style type="text/tailwindcss"> config block
+html = html.replace(/\n\s*<!-- Tailwind -->[\s\S]*?<\/script>[\s\S]*?<\/style>\n/, '\n');
 
 // Inject hashed stylesheet before </head>
 html = html.replace('</head>', `  <link rel="stylesheet" href="${cssFilename}">\n</head>`);
